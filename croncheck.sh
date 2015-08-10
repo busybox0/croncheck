@@ -8,10 +8,11 @@
 ###################################################################################################
 
 AMBER=$((14*60*60)) # threshold in seconds for warning
-#AMBER=2000
 RED=$((16*60*60)) # threshold in seconds for critical warning
-#RED=4000
 
+#### END OF CONFIGURATION AREA ####
+
+#### self checks ####
 CRONID=$(pgrep -f crond)
 # CRONID=$(ps ho %p -C crond) # it picks CROND as well
 
@@ -23,20 +24,9 @@ elif [[ $( echo $CRONID | wc -l ) -gt 1 ]] ; then
     exit 2
 fi
 
-
-
-# this shows process start time
-#ps -p 4488 -o lstart=
-# this shows process elapsed time
-#ps -p 4488 -o etime=
-# this lists IDs of all childs of cron
-#pgrep -d,  -P $(pgrep -d, -P $(pgrep -f 'crond'))
-
-# this is how to parse elapsed time
-#ps -p 1 -o etime= | awk -F: '{ print $1 }'
-
- PID_ARR=()
- while read CH_PID ; do # < <(pgrep -P $(pgrep -d, -P $CRONID ))
+#### Loop through all child PIDs ####
+PID_ARR=()
+while read CH_PID ; do # < <(pgrep -P $(pgrep -d, -P $CRONID ))
 #    echo "Analyzing PID $CH_PID"
     ETIME=$(ps -p $CH_PID -o etime=)
 #   echo ETIME=$ETIME
@@ -54,32 +44,31 @@ fi
     fi
     ELAPS_SECONDS=$((HOURS*60*60+MINUTES*60+SECUNDS))
 #    echo "For PID $CH_PID (DAYS=$DAYS) HOURS=$HOURS, MINUTES=$MINUTES, SECUNDS=$SECUNDS ELAPS_SECONDS=$ELAPS_SECONDS"
-#     echo "number of elements=${#PID_ARR[*]}"
+#    echo "number of elements=${#PID_ARR[*]}"
 
 
     if [[ $((ELAPS_SECONDS-RED)) -gt 0  ]] ; then # looking if it runs longer than RED - critical threshold
-#        echo "RED threshold for ID $CH_PID breached $((ELAPS_SECONDS-RED)) seconds ago."
+#       echo "RED threshold for ID $CH_PID breached $((ELAPS_SECONDS-RED)) seconds ago."
         REDPIDs="$REDPIDs$CH_PID,"
         PID_ARR+=("$CH_PID::$ELAPS_SECONDS")
-#        PID_ARR[${#PID_ARR[*]}]="$CH_PID::$ELAPS_SECONDS"
 
     elif [[ $((ELAPS_SECONDS-AMBER)) -gt 0 ]] ; then
-#        echo "AMBER threshold for ID $CH_PID breached $((ELAPS_SECONDS-AMBER)) seconds ago."
+#       echo "AMBER threshold for ID $CH_PID breached $((ELAPS_SECONDS-AMBER)) seconds ago."
         AMBERPIDs="$AMBERPIDs$CH_PID,"
         PID_ARR+=("$CH_PID::$ELAPS_SECONDS")
-#       PID_ARR[${#PID_ARR[*]}]="$CH_PID::$ELAPS_SECONDS"
 #    else
 #    echo "PID $CH_PID is below threshold"
     fi
 
 done < <(pgrep -P $(pgrep -d, -P $CRONID ))
 
-REDPIDs=$(  echo $REDPIDs   | sed 's/,$//')
+REDPIDs=$(  echo $REDPIDs   | sed 's/,$//') # getting rid of trailing coma
 AMBERPIDs=$(echo $AMBERPIDs | sed 's/,$//')
 
 #echo "AMBERPIDs=$AMBERPIDs REDPIDs=$REDPIDs"
 #echo "number of elements=${#PID_ARR[*]}"
-#echo ${PID_ARR[@]}
+#echo "all array items space delimited: ${PID_ARR[@]}"
+
 if [[ -n $REDPIDs ]] ; then
     echo "RED - critically long running childs of crond:"
     ps -p $REDPIDs -o pid,ppid,lstart,etime,time,args
@@ -90,8 +79,7 @@ if [[ -n $AMBERPIDs ]] ; then
     ps -p $AMBERPIDs -o pid,ppid,lstart,etime,time,args
 fi
 
-# Exit code generation
-
+#### Generation of exitcode
 INDEX=0
 OLDESTAGE=1
 EXITCODE=0
@@ -105,12 +93,20 @@ for ID_AGE in ${PID_ARR[@]}; do
         OLDESTAGE=$AGE
         EXITCODE=$INDEX
     fi
-#    echo $ID_ADGE OLDEST=$OLDESTAGE
 done
+
 if [[ $EXITCODE -gt 0 ]] ; then
-    echo "exiting with exitcode $EXITCODE, (Number bigger than 0 stays for line number of most aged PID."
+    echo "exiting with exitcode $EXITCODE, (Number stays for line number of most aged PID."
 else
     echo "GREEN: No long-runners were found among cron childs."
 fi
     exit $EXITCODE
 
+
+#### SANDBOX area ####
+# process start time
+#ps -p 4488 -o lstart=
+# process elapsed time
+#ps -p 4488 -o etime=
+# IDs of all childs of cron
+#pgrep -d,  -P $(pgrep -d, -P $(pgrep -f 'crond'))
